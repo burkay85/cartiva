@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pandas
+numpy
+prophet
+scikit-learn
+shap
+aiohttp
+httpx
+python-multipart
+jupyter

@@ -1,0 +1,87 @@
+/* Tüm sayfa yüksekliği boyunca flex yapısı */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: 'Segoe UI', sans-serif;
+  background: #0e0e1f;
+  color: #e0f7fa;
+}
+
+/* Layout container: tüm sayfayı kapla */
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Header ve footer sabit, esnemez */
+header, footer {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Main içeriği ekranı doldurur */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 30px;
+  padding: 20px;
+}
+
+/* Kartlar */
+.card {
+  background: rgba(255,255,255,0.05);
+  padding: 20px;
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  max-width: 500px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Input ve butonlar */
+input[type="number"] {
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  margin-bottom: 15px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.1);
+  color: #e0f7fa;
+}
+
+button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(45deg, #00e5ff, #1de9b6);
+  border: none;
+  border-radius: 50px;
+  color: #0e0e1f;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+button:hover {
+  opacity: 0.8;
+}
+
+/* Sonuç yazısı */
+.explanation-text {
+  margin-top: 20px;
+  color: #80deea;
+  font-size: 1.1em;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  main {
+    padding: 10px;
+  }
+}

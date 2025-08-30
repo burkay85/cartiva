@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cognitive Pricing</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    html, body { height:100%; margin:0; font-family:'Segoe UI',sans-serif; background:#0e0e1f; color:#e0f7fa; display:flex; flex-direction:column; }
+    .layout { display:flex; flex-direction:column; flex:1; }
+    header, footer { flex-shrink:0; text-align:center; padding:20px; }
+    main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:26px; padding:20px; }
+    .card { background:rgba(255,255,255,0.05); padding:20px; border-radius:12px; backdrop-filter:blur(8px); max-width:980px; width:100%; }
+    .card.narrow { max-width:520px; }
+    label { display:block; font-size:.95rem; margin-top:8px; }
+    input[type="number"]{ width:100%; padding:10px; margin:8px 0 2px; border:none; border-radius:6px; background:rgba(255,255,255,0.1); color:#e0f7fa; }
+    input[type="checkbox"]{ transform:scale(1.2); margin-left:6px; }
+    button{ width:100%; padding:12px; margin-top:12px; background:linear-gradient(45deg,#00e5ff,#1de9b6); border:none; border-radius:50px; color:#0e0e1f; font-weight:700; cursor:pointer; }
+    button[disabled]{ opacity:.6; cursor:not-allowed; }
+    .explanation-text{ margin-top:14px; color:#80deea; font-size:1.05em; }
+    .muted{ opacity:.8; font-size:.9rem; }
+    .row{ display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; }
+    .row .box, .row label{ flex:1 1 220px; background:rgba(255,255,255,.06); border-radius:10px; padding:10px 12px; }
+    .row label{ background:transparent; padding:0; }
+    .val{ font-weight:700; font-size:1.15rem; }
+    .err{ margin-top:10px; color:#ff8a80; font-weight:600; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <header>
+      <h1>💡 Cognitive Pricing Intelligence</h1>
+      <p>Akıllı fiyat önerileriyle verimliliği artırın</p>
+    </header>
+
+    <main>
+      <!-- Girdi kartı -->
+      <section class="card narrow">
+        <h2>Verileri Girin</h2>
+        <label>Stok Seviyesi<input type="number" id="stock_level" value="80" /></label>
+        <label>Son Fiyat<input type="number" id="last_price" value="95" step="0.01" /></label>
+        <label>Rakip Fiyatı<input type="number" id="competitor_price" value="100" step="0.01" /></label>
+        <label>Geçen Haftaki Satış<input type="number" id="sales_last_week" value="12" /></label>
+        <button id="ask-btn">🧠 Tahmini Al</button>
+        <div id="err" class="err"></div>
+      </section>
+
+      <!-- Maliyet parametreleri -->
+      <section class="card">
+        <h2>Maliyet Parametreleri</h2>
+        <div class="row">
+          <label>Alış Maliyeti (TL) <input type="number" id="c_unit_cost" value="60" step="0.01"></label>
+          <label>Komisyon (%) <input type="number" id="c_commission_pct" value="12" step="0.01"></label>
+          <label>Ödeme Ücreti (%) <input type="number" id="c_payment_fee_pct" value="2" step="0.01"></label>
+          <label>Vergi (%) <input type="number" id="c_tax_pct" value="0" step="0.01"></label>
+          <label>Kargo (TL) <input type="number" id="c_shipping_cost" value="25" step="0.01"></label>
+          <label>Paketleme (TL) <input type="number" id="c_packaging_cost" value="3" step="0.01"></label>
+          <label>Diğer Sabit (TL) <input type="number" id="c_other_fixed_cost" value="0" step="0.01"></label>
+          <label>Min. Kâr Marjı Hedefi (%) <input type="number" id="c_min_margin_pct" value="10" step="0.01"></label>
+        </div>
+        <p class="muted">Yüzde alanlarını % olarak girin (örn. 12 → %12). Uygulama otomatik olarak ondalığa çevirir.</p>
+      </section>
+
+      <!-- Yeni Fiyat Tahmini -->
+      <section class="card">
+        <h2>Yeni Fiyat Tahmini</h2>
+        <canvas id="priceGauge" height="160"></canvas>
+
+        <div class="row" style="margin-top:16px;">
+          <div class="box"><div class="muted">Mevcut Fiyat</div><div class="val" id="valCurrent">—</div></div>
+          <div class="box"><div class="muted">Yeni Fiyat</div><div class="val" id="valNew">—</div></div>
+          <div class="box"><div class="muted">Değişim</div><div class="val" id="valChange">—</div></div>
+        </div>
+
+        <p id="explanation" class="explanation-text">Tahmin sonuçları burada görünecek.</p>
+      </section>
+
+      <!-- Guard & Döküm -->
+      <section class="card">
+        <h2>Guard & Kârlılık Dökümü</h2>
+        <div class="row">
+          <div class="box"><div class="muted">Break-even</div><div class="val" id="outBE">—</div></div>
+          <div class="box"><div class="muted">Min Marj için Fiyat</div><div class="val" id="outGuardPrice">—</div></div>
+          <div class="box"><div class="muted">Net Kâr</div><div class="val" id="outProfit">—</div></div>
+          <div class="box"><div class="muted">Marj (%)</div><div class="val" id="outMargin">—</div></div>
+        </div>
+        <p class="muted" id="outGuardNote">—</p>
+      </section>
+
+      <!-- Senaryo Simülasyonu -->
+      <section class="card">
+        <h2>Senaryo Simülasyonu</h2>
+        <div class="row">
+          <label>Fiyat Değişimi (%) <input type="number" id="sim_pct" value="5" step="0.5"></label>
+          <label style="display:flex; align-items:center; gap:8px;">Guard Uygula? <input type="checkbox" id="sim_guard" checked></label>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <div class="box"><div class="muted">Öneri Baz Fiyatı</div><div class="val" id="sim_base">—</div></div>
+          <div class="box"><div class="muted">Aday Fiyat</div><div class="val" id="sim_candidate">—</div></div>
+          <div class="box"><div class="muted">Uygulanan Fiyat</div><div class="val" id="sim_applied">—</div></div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <div class="box"><div class="muted">Break-even</div><div class="val" id="sim_be">—</div></div>
+          <div class="box"><div class="muted">Min Marj Fiyatı</div><div class="val" id="sim_guard_price">—</div></div>
+          <div class="box"><div class="muted">Net Kâr</div><div class="val" id="sim_profit">—</div></div>
+          <div class="box"><div class="muted">Marj (%)</div><div class="val" id="sim_margin">—</div></div>
+        </div>
+        <button id="sim-btn">📈 Simüle Et</button>
+        <button id="sim-draw" style="margin-top:10px;">📊 Eğriyi Çiz (-20% … +20%)</button>
+        <div class="err" id="sim_err"></div>
+        <canvas id="simChart" height="220" style="margin-top:14px;"></canvas>
+      </section>
+    </main>
+
+    <footer><p>&copy; 2025 Cognitive Commerce Platform</p></footer>
+  </div>
+
+  <script>
+    // ---------- CONFIG ----------
+   window.API_BASE_URL = "https://cognitive-commerce-platform.onrender.com";
+    // ---------- yardımcılar ----------
+    const $ = (id) => document.getElementById(id);
+    const fmtTL = (n) => isFinite(n) ? new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY',maximumFractionDigits:2}).format(n) : '—';
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const num = (id, fb=0) => { const v = Number($(id)?.value); return isFinite(v) ? v : fb; };
+
+    // ---------- gauge ----------
+    const ctx = document.getElementById('priceGauge').getContext('2d');
+    const gaugeChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: { labels:['Değişim','Kalan'], datasets:[{ data:[0,100], backgroundColor:['#26c6da','#004d40'], borderWidth:0 }] },
+      options: { circumference:180, rotation:270, cutout:'80%', plugins:{legend:{display:false}} }
+    });
+
+    const btn = $('ask-btn');
+    const errBox = $('err');
+    let LAST_RECOMMENDED_PRICE = null;
+
+    // ---- Dekorasyon plugin'i: guard gölgesi + dikey çizgiler ----
+    const simDecorationsPlugin = {
+      id: 'simDecorations',
+      afterDraw(chart){
+        const { ctx, chartArea, scales } = chart;
+        const meta = chart.$meta || {};
+        const xScale = scales.x, yScale = scales.yTL;
+        if (!xScale || !yScale) return;
+
+        // Guard gölgesi
+        if (meta.applyGuard && isFinite(meta.thresholdPct)) {
+          const leftX  = xScale.left;
+          const rightX = Math.min(xScale.getPixelForValue(meta.thresholdPct), xScale.right);
+          if (rightX > leftX) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 138, 128, 0.10)';
+            ctx.fillRect(leftX, chartArea.top, rightX - leftX, chartArea.bottom - chartArea.top);
+            ctx.restore();
+          }
+        }
+
+        // Dikey çizgi yardımcı fonk.
+        function vline(x, color){
+          if (x < xScale.left || x > xScale.right) return;
+          ctx.save();
+          ctx.strokeStyle = color; ctx.setLineDash([4,4]); ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke();
+          ctx.restore();
+        }
+
+        // 0% çizgisi
+        vline(xScale.getPixelForValue(0), '#80deea');
+        // Guard eşiği
+        if (isFinite(meta.thresholdPct)) vline(xScale.getPixelForValue(meta.thresholdPct), '#ff8a80');
+      }
+    };
+
+    // ---- Simülasyon grafiği (çift eksen + özel tooltip) ----
+    const simCtx = document.getElementById('simChart').getContext('2d');
+    const simChart = new Chart(simCtx, {
+      type: 'line',
+      data: { labels:[], datasets:[
+        { label:'Net Kâr (₺)', data:[], yAxisID:'yTL', tension:0.2, pointRadius:2 },
+        { label:'Marj (%)',    data:[], yAxisID:'yPct', tension:0.2, pointRadius:2 }
+      ]},
+      options: {
+        responsive:true,
+        plugins:{
+          legend:{ display:true },
+          tooltip:{
+            callbacks:{
+              label: (ctx)=>{
+                const pct = ctx.chart.data.labels[ctx.dataIndex];
+                const base = ctx.chart.$meta?.basePrice ?? null;
+                const candidate = base ? Math.max(0.01, base*(1+pct/100)) : null;
+                if (ctx.dataset.yAxisID === 'yTL') {
+                  return `Net Kâr: ${fmtTL(ctx.parsed.y)}${candidate?` • Aday: ${fmtTL(candidate)}`:''}`;
+                } else {
+                  return `Marj: ${Number(ctx.parsed.y).toFixed(2)} %${candidate?` • Aday: ${fmtTL(candidate)}`:''}`;
+                }
+              }
+            }
+          }
+        },
+        scales:{
+          yTL:{ type:'linear', position:'left', title:{ display:true, text:'₺' } },
+          yPct:{ type:'linear', position:'right', title:{ display:true, text:'%' }, grid:{ drawOnChartArea:false } },
+          x:{ title:{ display:true, text:'Fiyat Değişimi (%)' } }
+        }
+      },
+      plugins: [simDecorationsPlugin]
+    });
+
+    async function getRecommendation(){
+      errBox.textContent = '';
+      btn.disabled = true; btn.textContent = 'Hesaplanıyor…';
+
+      const state = {
+        stock_level: num('stock_level'),
+        last_price: num('last_price'),
+        competitor_price: num('competitor_price'),
+        sales_last_week: num('sales_last_week')
+      };
+
+      const costs = {
+        unit_cost: num('c_unit_cost'),
+        commission_pct: num('c_commission_pct')/100,
+        payment_fee_pct: num('c_payment_fee_pct')/100,
+        tax_pct: num('c_tax_pct')/100,
+        shipping_cost: num('c_shipping_cost'),
+        packaging_cost: num('c_packaging_cost'),
+        other_fixed_cost: num('c_other_fixed_cost'),
+        min_margin_pct: num('c_min_margin_pct')/100
+      };
+
+      if (!state.last_price || !state.competitor_price) {
+        errBox.textContent = 'Son Fiyat ve Rakip Fiyatı zorunludur.';
+        btn.disabled=false; btn.textContent='🧠 Tahmini Al';
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/agent/recommend-price`, {
+          method:'POST', headers:{ 'Content-Type':'application/json','accept':'application/json' },
+          body: JSON.stringify({ state, costs })
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+        const j = await res.json();
+
+        const newPrice = Number(j.recommended_price);
+        LAST_RECOMMENDED_PRICE = isFinite(newPrice) ? newPrice : null;
+
+        const pctChange = (isFinite(newPrice) && state.last_price > 0)
+          ? ((newPrice - state.last_price) / state.last_price) * 100 : 0;
+
+        const absPct = clamp(Math.abs(pctChange), 0, 100);
+        gaugeChart.data.datasets[0].data = [absPct, 100-absPct];
+        gaugeChart.data.datasets[0].backgroundColor = pctChange >= 0 ? ['#66bb6a','#1b3a2b'] : ['#ef5350','#3b1d1d'];
+        gaugeChart.update();
+
+        $('valCurrent').textContent = fmtTL(state.last_price);
+        $('valNew').textContent     = fmtTL(newPrice);
+        $('valChange').textContent  = (pctChange>=0?'+':'') + pctChange.toFixed(2) + ' %';
+
+        // ---- XAI metnini tutarlı hale getir ----
+        const minPctTxt = (costs.min_margin_pct*100).toFixed(2);
+        let xaiText = j.xai || '';
+        const rl = j.rl_price_estimate;
+        const guardMin = j.guard?.min_margin_price;
+        const guardApplied = !!j.guard?.applied;
+
+        if (guardApplied && isFinite(rl) && isFinite(guardMin) && rl < guardMin) {
+          xaiText =
+            `RL, stok/talep sinyallerine göre fiyatı düşürmeyi önerdi (₺${rl.toFixed(2)}). ` +
+            `Ancak Margin Guard (min %${minPctTxt} marj) nedeniyle fiyat ₺${newPrice.toFixed(2)} seviyesine yükseltildi.`;
+        }
+        $('explanation').textContent = xaiText || '—';
+
+        $('outBE').textContent         = fmtTL(j.guard?.break_even);
+        $('outGuardPrice').textContent = fmtTL(j.guard?.min_margin_price);
+        $('outProfit').textContent     = isFinite(j.profit?.net_profit) ? fmtTL(j.profit.net_profit) : '—';
+        $('outMargin').textContent     = isFinite(j.profit?.margin_pct) ? (j.profit.margin_pct*100).toFixed(2)+' %' : '—';
+
+        $('outGuardNote').textContent =
+          `Margin Guard uygulandı mı? ${guardApplied ? 'EVET' : 'HAYIR'}. Min marj hedefi: ${minPctTxt} %.`;
+      } catch (e) {
+        console.error(e); errBox.textContent = 'Tahmin alınamadı: ' + e.message;
+      } finally {
+        btn.disabled = false; btn.textContent = '🧠 Tahmini Al';
+      }
+    }
+
+    async function simulateScenario(){
+      const err = $('sim_err'); err.textContent = '';
+      try{
+        const pct = Number($('sim_pct').value || 0);
+        const applyGuard = $('sim_guard').checked;
+        const base = isFinite(LAST_RECOMMENDED_PRICE) ? LAST_RECOMMENDED_PRICE : num('last_price');
+        $('sim_base').textContent = fmtTL(base);
+
+        const candidate = Math.max(0.01, base * (1 + pct/100));
+        $('sim_candidate').textContent = fmtTL(candidate);
+
+        const costs = {
+          unit_cost: num('c_unit_cost'),
+          commission_pct: num('c_commission_pct')/100,
+          payment_fee_pct: num('c_payment_fee_pct')/100,
+          tax_pct: num('c_tax_pct')/100,
+          shipping_cost: num('c_shipping_cost'),
+          packaging_cost: num('c_packaging_cost'),
+          other_fixed_cost: num('c_other_fixed_cost'),
+          min_margin_pct: num('c_min_margin_pct')/100
+        };
+
+        const res = await fetch(`${API_BASE_URL}/agent/simulate`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ price: candidate, costs, apply_guard: applyGuard })
+        });
+        if(!res.ok) throw new Error(`HTTP ${res.status} — ${await res.text()}`);
+        const s = await res.json();
+
+        $('sim_applied').textContent     = fmtTL(s.applied_price);
+        $('sim_be').textContent          = fmtTL(s.guard?.break_even);
+        $('sim_guard_price').textContent = fmtTL(s.guard?.min_margin_price);
+        $('sim_profit').textContent      = isFinite(s.profit?.net_profit) ? fmtTL(s.profit.net_profit) : '—';
+        $('sim_margin').textContent      = isFinite(s.profit?.margin_pct) ? (s.profit.margin_pct*100).toFixed(2)+' %' : '—';
+
+        // İstersen her simülasyondan sonra grafiği tazele:
+        // await drawSimulationCurve();
+      } catch(e){
+        console.error(e); $('sim_err').textContent = 'Simülasyon çalışmadı: ' + e.message;
+      }
+    }
+
+    async function drawSimulationCurve(){
+      const btnDraw = $('sim-draw');
+      const err = $('sim_err'); err.textContent = '';
+      btnDraw.disabled = true; btnDraw.textContent = 'Hesaplanıyor…';
+      try{
+        const base = isFinite(LAST_RECOMMENDED_PRICE) ? LAST_RECOMMENDED_PRICE : num('last_price');
+        const costs = {
+          unit_cost: num('c_unit_cost'),
+          commission_pct: num('c_commission_pct')/100,
+          payment_fee_pct: num('c_payment_fee_pct')/100,
+          tax_pct: num('c_tax_pct')/100,
+          shipping_cost: num('c_shipping_cost'),
+          packaging_cost: num('c_packaging_cost'),
+          other_fixed_cost: num('c_other_fixed_cost'),
+          min_margin_pct: num('c_min_margin_pct')/100
+        };
+        const applyGuard = $('sim_guard')?.checked ?? true;
+
+        const labels = []; for(let p=-20; p<=20; p++) labels.push(p);
+        const reqs = labels.map(pct=>{
+          const candidate = Math.max(0.01, base * (1 + pct/100));
+          return fetch(`${API_BASE_URL}/agent/simulate`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ price: candidate, costs, apply_guard: applyGuard })
+          }).then(r=> r.ok ? r.json() : r.text().then(t=>{ throw new Error(t); }));
+        });
+
+        const results = await Promise.all(reqs);
+        const netProfit = results.map(r => r?.profit?.net_profit ?? NaN);
+        const marginPct = results.map(r => isFinite(r?.profit?.margin_pct) ? (r.profit.margin_pct*100) : NaN);
+
+        // Guard eşiğini belirle (pct=0 cevabındaki min_margin_price)
+        const zeroIdx = labels.indexOf(0);
+        const minGuardPrice = results[zeroIdx]?.guard?.min_margin_price ?? null;
+        const thresholdPct = (minGuardPrice && base) ? ((minGuardPrice/base - 1)*100) : null;
+
+        // Chart verisi + plugin metadata
+        simChart.data.labels = labels;
+        simChart.data.datasets[0].data = netProfit;
+        simChart.data.datasets[1].data = marginPct;
+        simChart.$meta = { basePrice: base, applyGuard: !!applyGuard, thresholdPct: isFinite(thresholdPct) ? thresholdPct : null };
+        simChart.update();
+      }catch(e){
+        console.error(e); err.textContent = 'Grafik çizilemedi: ' + e.message;
+      }finally{
+        btnDraw.disabled = false; btnDraw.textContent = '📊 Eğriyi Çiz (-20% … +20%)';
+      }
+    }
+
+    // Olaylar
+    btn.addEventListener('click', getRecommendation);
+    $('sim-btn')?.addEventListener('click', simulateScenario);
+    $('sim-draw')?.addEventListener('click', drawSimulationCurve);
+    ['stock_level','last_price','competitor_price','sales_last_week',
+     'c_unit_cost','c_commission_pct','c_payment_fee_pct','c_tax_pct',
+     'c_shipping_cost','c_packaging_cost','c_other_fixed_cost','c_min_margin_pct'
+    ].forEach(id => { const el = $(id); if(el) el.addEventListener('keydown', e=>{ if(e.key==='Enter') getRecommendation(); }); });
+  </script>
+</body>
+</html>
