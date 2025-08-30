@@ -1,0 +1,23 @@
+# Python
+venv/
+.env
+*.pyc
+__pycache__/
+*.pytest_cache/
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# OS/editor
+.DS_Store
+*.log
+
+# Node/web (ilerisi için)
+node_modules/
+.cache/
+
+# Render/IDE
+.idea/
+.vscode/
